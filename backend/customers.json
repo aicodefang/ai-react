@@ -1,0 +1,42 @@
+[
+  {
+    "id": "customer-1779777465839",
+    "customerName": "测试数据",
+    "level": "B",
+    "contactName": "1dsacxz",
+    "phone": "18600709850",
+    "region": "华北",
+    "status": "active",
+    "createdAt": "2025"
+  },
+  {
+    "id": "customer-001",
+    "customerName": "星河制造集团",
+    "level": "A",
+    "contactName": "林悦",
+    "phone": "13800138001",
+    "region": "华东",
+    "status": "active",
+    "createdAt": "2026-05-20"
+  },
+  {
+    "id": "customer-002",
+    "customerName": "北辰供应链",
+    "level": "B",
+    "contactName": "周明",
+    "phone": "13900139002",
+    "region": "华北",
+    "status": "pending",
+    "createdAt": "2026-05-22"
+  },
+  {
+    "id": "customer-003",
+    "customerName": "蓝鲸能源",
+    "level": "C",
+    "contactName": "陈安",
+    "phone": "13700137003",
+    "region": "华南",
+    "status": "disabled",
+    "createdAt": "2026-05-23"
+  }
+]
