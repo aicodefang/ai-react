@@ -2,29 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-from urllib.parse import urlparse
-
-import httpx
 from fastapi import HTTPException
 
 from ..config import Settings
+from ..schemas.shared_contract import SharedContract
+from ..services.llm import chat_completion, extract_json_object, extract_message_content
 from ..models import PageDsl
-
-
-def ensure_xiaomi_env(settings: Settings) -> None:
-    if not settings.xiaomi_api_base or not settings.xiaomi_api_key or not settings.xiaomi_model:
-        raise HTTPException(status_code=500, detail="模型环境变量未配置")
-
-
-def build_model_headers(settings: Settings) -> dict[str, str]:
-    headers = {"Content-Type": "application/json"}
-    host = urlparse(settings.xiaomi_api_base).netloc.lower()
-    if "deepseek.com" in host:
-        headers["Authorization"] = f"Bearer {settings.xiaomi_api_key}"
-        return headers
-
-    headers["api-key"] = settings.xiaomi_api_key
-    return headers
 
 
 def extract_json_object(text: str) -> dict:
@@ -89,7 +72,6 @@ def normalize_dsl_payload(payload: dict) -> dict:
 
 
 async def generate_dsl_with_xiaomi(prompt: str, settings: Settings) -> PageDsl:
-    ensure_xiaomi_env(settings)
     system_prompt = (
         "你是一个企业管理系统前端 DSL 生成器。"
         "请基于用户需求，输出一个严格合法的 JSON 对象，不要输出解释、不要输出 Markdown。"
@@ -113,29 +95,11 @@ async def generate_dsl_with_xiaomi(prompt: str, settings: Settings) -> PageDsl:
         f"页面需求：{prompt}"
     )
     request_payload = {
-        "model": settings.xiaomi_model,
-        "temperature": 0.2,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
+        "system_prompt": system_prompt,
+        "user_prompt": user_prompt,
     }
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(
-            f"{settings.xiaomi_api_base}/chat/completions",
-            headers=build_model_headers(settings),
-            json=request_payload,
-        )
-        response.raise_for_status()
-        payload = response.json()
-
-    try:
-        content = payload["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise HTTPException(status_code=502, detail="模型响应结构异常，无法提取 DSL") from exc
-
-    parsed = normalize_dsl_payload(extract_json_object(content))
+    payload = await chat_completion(settings, request_payload["system_prompt"], request_payload["user_prompt"])
+    parsed = normalize_dsl_payload(extract_json_object(extract_message_content(payload)))
     try:
         return PageDsl.model_validate(parsed)
     except Exception as exc:

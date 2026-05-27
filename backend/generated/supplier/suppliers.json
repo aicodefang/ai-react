@@ -1,0 +1,32 @@
+[
+  {
+    "id": "supplier-seed-001",
+    "supplierName": "华东电子元件",
+    "supplierType": "manufacturing",
+    "contactName": "陈晓峰",
+    "phone": "13800138031",
+    "city": "上海",
+    "cooperationStatus": "active",
+    "createdAt": "2026-05-10"
+  },
+  {
+    "id": "supplier-seed-002",
+    "supplierName": "北辰包装材料",
+    "supplierType": "packaging",
+    "contactName": "刘安琪",
+    "phone": "13800138032",
+    "city": "北京",
+    "cooperationStatus": "pending",
+    "createdAt": "2026-05-14"
+  },
+  {
+    "id": "supplier-seed-003",
+    "supplierName": "南港物流协作",
+    "supplierType": "logistics",
+    "contactName": "何嘉豪",
+    "phone": "13800138033",
+    "city": "深圳",
+    "cooperationStatus": "paused",
+    "createdAt": "2026-05-18"
+  }
+]

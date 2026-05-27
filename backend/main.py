@@ -4,8 +4,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from .generated import register_generated_routers
 from .exceptions import http_exception_handler, unhandled_exception_handler, validation_exception_handler
-from .routers import apis, customers, dsl, health, pages
+from .routers import apis, customers, dsl, health, pages, workflow
 
 
 def create_app() -> FastAPI:
@@ -27,6 +28,8 @@ def create_app() -> FastAPI:
     app.include_router(customers.router)
     app.include_router(apis.router)
     app.include_router(pages.router)
+    app.include_router(workflow.router)
+    register_generated_routers(app)
     return app
 
 

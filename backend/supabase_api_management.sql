@@ -38,3 +38,38 @@ create table if not exists public.customers (
 create index if not exists idx_customers_customer_name on public.customers(customer_name);
 create index if not exists idx_customers_level on public.customers(level);
 create index if not exists idx_customers_status on public.customers(status);
+
+create table if not exists public.workflow_runs (
+  id text primary key,
+  prompt text not null,
+  status text not null check (status in ('pending', 'running', 'succeeded', 'failed')),
+  shared_contract_json jsonb null,
+  created_at text not null,
+  updated_at text not null
+);
+
+create table if not exists public.workflow_steps (
+  id text primary key,
+  run_id text not null references public.workflow_runs(id) on delete cascade,
+  agent_name text not null,
+  status text not null check (status in ('pending', 'running', 'succeeded', 'failed')),
+  summary text not null,
+  output_json jsonb null,
+  error_message text null,
+  started_at text not null,
+  finished_at text null
+);
+
+create table if not exists public.workflow_artifacts (
+  id text primary key,
+  run_id text not null references public.workflow_runs(id) on delete cascade,
+  agent_name text not null,
+  artifact_type text not null,
+  target_path text not null,
+  content_preview text not null,
+  created_at text not null
+);
+
+create index if not exists idx_workflow_steps_run_id on public.workflow_steps(run_id);
+create index if not exists idx_workflow_steps_agent_status on public.workflow_steps(agent_name, status);
+create index if not exists idx_workflow_artifacts_run_id on public.workflow_artifacts(run_id);

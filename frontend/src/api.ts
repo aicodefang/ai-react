@@ -93,6 +93,76 @@ export type GenerateDslRequest = {
   prompt: string
 }
 
+export type SharedContractField = {
+  name: string
+  label: string
+  type: FieldType
+  required?: boolean
+  options?: string[]
+}
+
+export type SharedContract = {
+  entity: string
+  title: string
+  route: string
+  pageType: 'crud'
+  layout: 'filter-table-modal'
+  dataSource: 'mock' | 'api'
+  fields: SharedContractField[]
+  queryFields: string[]
+  tableColumns: string[]
+  formFields: string[]
+  features: string[]
+  permissions: {
+    query?: string
+    create?: string
+    update?: string
+    delete?: string
+    export?: string
+  }
+  apis: {
+    list: { method: ApiMethod; path: string }
+    create: { method: ApiMethod; path: string }
+    update: { method: ApiMethod; path: string }
+    delete: { method: ApiMethod; path: string }
+  }
+  rules: string[]
+}
+
+export type WorkflowStep = {
+  id: string
+  runId: string
+  agentName: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  summary: string
+  output?: Record<string, unknown>
+  warnings: string[]
+  errors: string[]
+  startedAt: string
+  finishedAt?: string
+}
+
+export type WorkflowArtifact = {
+  id: string
+  runId: string
+  agentName: string
+  artifactType: string
+  targetPath: string
+  contentPreview: string
+  createdAt: string
+}
+
+export type WorkflowRun = {
+  id: string
+  prompt: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  sharedContract?: SharedContract
+  steps: WorkflowStep[]
+  artifacts: WorkflowArtifact[]
+  createdAt: string
+  updatedAt: string
+}
+
 type ApiResponse<T> = {
   code: number
   message: string
@@ -147,6 +217,21 @@ export function generateDsl(prompt: string) {
     body: JSON.stringify({ prompt } satisfies GenerateDslRequest),
     method: 'POST',
   })
+}
+
+export function createWorkflowRun(prompt: string) {
+  return request<WorkflowRun>('/api/workflows/generate', {
+    body: JSON.stringify({ prompt }),
+    method: 'POST',
+  })
+}
+
+export function listWorkflowRuns() {
+  return request<Record<string, unknown>[]>('/api/workflows')
+}
+
+export function getWorkflowRun(runId: string) {
+  return request<Record<string, unknown>>(`/api/workflows/${runId}`)
 }
 
 export function listApis(pageNo = 1, pageSize = 10) {

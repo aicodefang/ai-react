@@ -2,7 +2,6 @@ import {
   ApiOutlined,
   AppstoreOutlined,
   CheckCircleFilled,
-  CodeOutlined,
   DeleteOutlined,
   LinkOutlined,
   DownloadOutlined,
@@ -23,6 +22,7 @@ import {
   Flex,
   Form,
   Input,
+  List,
   Skeleton,
   Modal,
   Popconfirm,
@@ -40,7 +40,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import { useEffect, useMemo, useState } from 'react'
 import { BrowserRouter, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { buildRuntimePath, createApi, createPage, deletePage, generateDsl, getPage, getPageBindings, invokeRuntimeApi, listApis, removeApi, savePageBindings, updateApi } from './api'
+import { buildRuntimePath, createApi, createPage, createWorkflowRun, deletePage, getPage, getPageBindings, getWorkflowRun, invokeRuntimeApi, listApis, listWorkflowRuns, removeApi, savePageBindings, updateApi } from './api'
 import { AppFrame } from './components/AppFrame'
 import { apiActionOptions, apiMethodOptions, apiStatusOptions, businessSpec, initialPrompt } from './constants'
 import { usePagesStore } from './hooks/usePagesStore'
@@ -51,42 +51,65 @@ import { createPreviewRows, extractListRows, getFieldPlaceholder, normalizePrevi
 import { AppRoutes } from './routes/AppRoutes'
 import type { ApiFormValues, DataSourceMode, NewPageRouteState, PageProps, SharedAppProps } from './types'
 import './App.css'
-import type { ApiAction, ApiDefinition, GeneratedPage, PageApiBinding, PageDsl, PreviewRecord, SaveApiRequest } from './api'
+import type { ApiAction, ApiDefinition, GeneratedPage, PageApiBinding, PreviewRecord, SaveApiRequest, WorkflowArtifact, WorkflowRun, WorkflowStep, FieldSpec } from './api'
 
 function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
   const [prompt, setPrompt] = useState(initialPrompt)
-  const [dsl, setDsl] = useState<PageDsl | null>(null)
-  const [dslOpen, setDslOpen] = useState(false)
-  const [isGeneratingDsl, setIsGeneratingDsl] = useState(false)
+  const [currentRun, setCurrentRun] = useState<WorkflowRun | null>(null)
+  const [recentRuns, setRecentRuns] = useState<Record<string, unknown>[]>([])
+  const [isGeneratingWorkflow, setIsGeneratingWorkflow] = useState(false)
+  const [isLoadingRuns, setIsLoadingRuns] = useState(false)
   const [messageApi, contextHolder] = message.useMessage()
-  const navigate = useNavigate()
 
-  const handleGenerateDsl = async () => {
+  const refreshRuns = async () => {
+    setIsLoadingRuns(true)
+    try {
+      const runs = await listWorkflowRuns()
+      setRecentRuns(runs)
+    } catch {
+      setRecentRuns([])
+    } finally {
+      setIsLoadingRuns(false)
+    }
+  }
+
+  useEffect(() => {
+    void refreshRuns()
+  }, [])
+
+  const handleGenerateWorkflow = async () => {
     if (!prompt.trim()) {
       messageApi.warning('请先输入页面需求')
       return
     }
 
-    setIsGeneratingDsl(true)
+    setIsGeneratingWorkflow(true)
     try {
-      const result = await generateDsl(prompt)
-      setDsl(result)
-      setDslOpen(true)
-      messageApi.success('DSL 已生成，请在弹窗中确认')
+      const result = await createWorkflowRun(prompt)
+      setCurrentRun(result)
+      await refreshRuns()
+      messageApi.success('多 Agent 工作流执行完成')
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'DSL 生成失败，请稍后重试'
+      const errorMessage = error instanceof Error ? error.message : '工作流执行失败，请稍后重试'
       messageApi.error(errorMessage)
     } finally {
-      setIsGeneratingDsl(false)
+      setIsGeneratingWorkflow(false)
     }
   }
 
-  const handleConfirmDsl = () => {
-    if (!dsl) return
-    setDslOpen(false)
-    messageApi.success('DSL 已确认，请在预览页点击保存')
-    navigate('/pages/new', { state: { dsl } satisfies NewPageRouteState })
+  const handleOpenRun = async (runId: string) => {
+    try {
+      const detail = (await getWorkflowRun(runId)) as unknown as WorkflowRun
+      setCurrentRun(detail)
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '加载工作流详情失败')
+    }
   }
+
+  const sqlArtifacts = currentRun?.artifacts.filter((artifact: WorkflowArtifact) => artifact.artifactType === 'sql') ?? []
+  const runtimeEntity = currentRun?.sharedContract?.entity
+  const runtimePageUrl = runtimeEntity ? `/generated/${runtimeEntity}` : ''
+  const runtimeApiPath = runtimeEntity ? `/api/generated/${runtimeEntity}s` : ''
 
   return (
     <AppFrame>
@@ -95,18 +118,19 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
         <div className="page-title">
           <Space align="center">
             <FileTextOutlined />
-            <Typography.Title level={2}>AI 生成工作台</Typography.Title>
+            <Typography.Title level={2}>多 Agent 工作台</Typography.Title>
           </Space>
-          <Typography.Text type="secondary">输入需求、审查 DSL，确认后自动沉淀到页面管理。</Typography.Text>
+          <Typography.Text type="secondary">输入自然语言需求，由 Planner、Frontend、Service、QA 四个 Agent 串行/并行完成协议生成、代码草稿和契约校验。</Typography.Text>
         </div>
 
         <Card className="flow-card">
           <Steps
-            current={dsl ? 1 : 0}
+            current={currentRun ? 3 : 0}
             items={[
-              { title: '输入提示词', description: '描述页面和业务规则' },
-              { title: '弹窗确认 DSL', description: '审查字段、功能、校验' },
-              { title: '进入页面管理', description: '统一管理生成页面资产' },
+              { title: 'Planner', description: '自然语言转共享协议' },
+              { title: 'Frontend', description: '生成页面与路由草稿' },
+              { title: 'Service', description: '生成接口与 SQL 草稿' },
+              { title: 'QA', description: '校验字段与契约一致性' },
             ]}
           />
         </Card>
@@ -117,14 +141,14 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
             title={
               <Space>
                 <FileTextOutlined />
-                <span>页面需求</span>
+                <span>工作流需求</span>
               </Space>
             }
-            extra={<Tag color={dsl ? 'green' : 'blue'}>{dsl ? 'DSL 已生成' : '待生成'}</Tag>}
+            extra={<Tag color={currentRun ? (currentRun.status === 'succeeded' ? 'green' : 'orange') : 'blue'}>{currentRun ? currentRun.status : '待执行'}</Tag>}
           >
             <Input.TextArea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={10} />
-            <Button block icon={<ExperimentOutlined />} loading={isGeneratingDsl} type="primary" onClick={handleGenerateDsl}>
-              生成 DSL JSON
+            <Button block icon={<ExperimentOutlined />} loading={isGeneratingWorkflow} type="primary" onClick={handleGenerateWorkflow}>
+              启动多 Agent 工作流
             </Button>
             <Divider />
             <Typography.Text strong>当前命中的业务规范</Typography.Text>
@@ -148,40 +172,148 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
             </Card>
             <Card className="metric-card">
               <Statistic
-                loading={isPageListLoading}
                 prefix={<CheckCircleFilled />}
-                title="已验证页面"
-                value={pages.filter((page) => page.status === 'verified').length}
+                title="最近工作流"
+                value={recentRuns.length}
               />
             </Card>
             <Card className="metric-card">
-              <Typography.Text strong>落仓路径</Typography.Text>
-              <Typography.Paragraph type="secondary">当前 POC 将生成结果先登记为系统页面资产，后续可扩展为写入仓库 ChangeSet。</Typography.Paragraph>
+              <Typography.Text strong>生成落点</Typography.Text>
+              <Typography.Paragraph type="secondary">首版会将前后端代码草稿直接写入 generated 目录，并把 workflow 执行记录写入 Supabase。</Typography.Paragraph>
             </Card>
           </div>
         </div>
-      </section>
 
-      <Modal
-        centered
-        className="dsl-modal"
-        okText="确认并进入预览"
-        open={dslOpen}
-        title={
-          <Space>
-            <CodeOutlined />
-            <span>DSL JSON 审查</span>
-          </Space>
-        }
-        width={900}
-        onCancel={() => setDslOpen(false)}
-        onOk={handleConfirmDsl}
-      >
-        <Typography.Paragraph className="modal-hint">
-          请确认字段、功能和规则是否符合当前业务规范。确认后会进入预览页，点击保存后才会出现在页面管理。
-        </Typography.Paragraph>
-        {dsl ? <pre className="dsl-view modal-dsl-view">{JSON.stringify(dsl, null, 2)}</pre> : <Empty description="暂无 DSL" />}
-      </Modal>
+        <div className="dashboard-grid workflow-grid">
+          <Card className="panel" title="最近运行">
+            <List
+              loading={isLoadingRuns}
+              dataSource={recentRuns}
+              locale={{ emptyText: '暂无工作流记录' }}
+              renderItem={(item) => {
+                const run = item as { id: string; prompt: string; status: string; created_at: string }
+                return (
+                  <List.Item
+                    actions={[
+                      <Button key="view" size="small" type="link" onClick={() => void handleOpenRun(run.id)}>
+                        查看
+                      </Button>,
+                    ]}
+                  >
+                    <List.Item.Meta description={run.created_at} title={run.prompt.slice(0, 28)} />
+                    <Tag color={run.status === 'succeeded' ? 'green' : run.status === 'failed' ? 'red' : 'blue'}>{run.status}</Tag>
+                  </List.Item>
+                )
+              }}
+            />
+          </Card>
+
+          <Card className="panel workflow-output-panel" title="工作流详情">
+            {currentRun ? (
+              <div className="workflow-detail">
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                  <div className="workflow-meta-row">
+                    <Tag color={currentRun.status === 'succeeded' ? 'green' : 'red'}>{currentRun.status}</Tag>
+                    <Typography.Text type="secondary">{currentRun.id}</Typography.Text>
+                  </div>
+
+                  <div>
+                    <Typography.Text strong>共享协议</Typography.Text>
+                    <pre className="dsl-view">{JSON.stringify(currentRun.sharedContract, null, 2)}</pre>
+                  </div>
+
+                  <div>
+                    <Typography.Text strong>Agent 步骤</Typography.Text>
+                    <div className="workflow-step-list">
+                      {currentRun.steps.map((step: WorkflowStep) => (
+                        <Card key={step.id} size="small">
+                          <Flex justify="space-between">
+                            <Space>
+                              <Typography.Text strong>{step.agentName}</Typography.Text>
+                              <Tag color={step.status === 'succeeded' ? 'green' : step.status === 'failed' ? 'red' : 'blue'}>{step.status}</Tag>
+                            </Space>
+                            <Typography.Text type="secondary">{step.finishedAt ?? step.startedAt}</Typography.Text>
+                          </Flex>
+                          <Typography.Paragraph>{step.summary}</Typography.Paragraph>
+                          {step.warnings.length > 0 && (
+                            <Space wrap>
+                              {step.warnings.map((warning) => (
+                                <Tag color="orange" key={warning}>
+                                  {warning}
+                                </Tag>
+                              ))}
+                            </Space>
+                          )}
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Typography.Text strong>生成产物</Typography.Text>
+                    {sqlArtifacts.length > 0 && (
+                      <Card className="workflow-sql-card" size="small">
+                        <Space direction="vertical" size={10} style={{ width: '100%' }}>
+                          <div className="workflow-meta-row">
+                            <Tag color="gold">先执行 SQL</Tag>
+                            <Typography.Text strong>生成完成后，先去 Supabase 建表</Typography.Text>
+                          </div>
+                          <Typography.Paragraph type="secondary">
+                            这一步完成后，生成页面就能直接串通查询、新增、编辑、删除整条操作链路。
+                          </Typography.Paragraph>
+                          <div className="workflow-next-steps">
+                            <div className="workflow-next-step">
+                              <Typography.Text strong>1. 在 Supabase SQL Editor 执行下面的建表 SQL</Typography.Text>
+                            </div>
+                            <div className="workflow-next-step">
+                              <Typography.Text strong>2. 执行完成后刷新当前生成页</Typography.Text>
+                            </div>
+                            <div className="workflow-next-step">
+                              <Typography.Text strong>3. 打开生成运行页验证 CRUD 链路</Typography.Text>
+                              {runtimePageUrl && <Typography.Text code>{runtimePageUrl}</Typography.Text>}
+                              {runtimeApiPath && <Typography.Text code>{runtimeApiPath}</Typography.Text>}
+                            </div>
+                          </div>
+                          {sqlArtifacts.map((artifact: WorkflowArtifact) => (
+                            <Card key={`${artifact.id}-sql`} size="small">
+                              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                <Space>
+                                  <Tag>{artifact.agentName}</Tag>
+                                  <Tag color="blue">{artifact.artifactType}</Tag>
+                                </Space>
+                                <Typography.Text code>{artifact.targetPath}</Typography.Text>
+                                <pre className="dsl-view artifact-preview">{artifact.contentPreview}</pre>
+                              </Space>
+                            </Card>
+                          ))}
+                        </Space>
+                      </Card>
+                    )}
+                    <div className="workflow-artifact-list">
+                      {currentRun.artifacts
+                        .filter((artifact: WorkflowArtifact) => artifact.artifactType !== 'sql')
+                        .map((artifact: WorkflowArtifact) => (
+                        <Card key={artifact.id} size="small">
+                          <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                            <Space>
+                              <Tag>{artifact.agentName}</Tag>
+                              <Tag color="blue">{artifact.artifactType}</Tag>
+                            </Space>
+                            <Typography.Text code>{artifact.targetPath}</Typography.Text>
+                            <pre className="dsl-view artifact-preview">{artifact.contentPreview}</pre>
+                          </Space>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                </Space>
+              </div>
+            ) : (
+              <Empty description="执行工作流后，可在这里查看协议、步骤和代码摘要" />
+            )}
+          </Card>
+        </div>
+      </section>
     </AppFrame>
   )
 }
@@ -884,7 +1016,7 @@ function GeneratedPageDetail({ pages, refreshPages }: SharedAppProps) {
     if (!dsl) return []
 
     return [
-      ...dsl.fields.map((field, index) => ({
+      ...dsl.fields.map((field: FieldSpec, index: number) => ({
         title: field.label,
         dataIndex: field.name,
         key: field.name,
@@ -958,7 +1090,7 @@ function GeneratedPageDetail({ pages, refreshPages }: SharedAppProps) {
   const handleSubmit = async (values: PreviewRecord) => {
     const normalizedValues = dsl
       ? dsl.fields.reduce<PreviewRecord>(
-          (accumulator, field) => {
+          (accumulator: PreviewRecord, field: FieldSpec) => {
             accumulator[field.name] = values[field.name] ?? ''
             return accumulator
           },
@@ -1025,7 +1157,7 @@ function GeneratedPageDetail({ pages, refreshPages }: SharedAppProps) {
     try {
       if (dataSourceMode === 'api' && listApi) {
         const response = await invokeRuntimeApi<unknown>(listApi.path, listApi.method, { params: filters })
-        const records = extractListRows(response).map((item, index) => normalizePreviewRecord(item, dsl, `${dsl.entity}-query-${index + 1}`))
+        const records = extractListRows(response).map((item: Record<string, unknown>, index: number) => normalizePreviewRecord(item, dsl, `${dsl.entity}-query-${index + 1}`))
         setDataByDslKey((current) => ({
           ...current,
           [dslKey]: records,
@@ -1034,7 +1166,7 @@ function GeneratedPageDetail({ pages, refreshPages }: SharedAppProps) {
       } else {
         const mockRows = resolveMockRowsFromApi(listApi, dsl) ?? createPreviewRows(dsl)
         const filteredRows = mockRows.filter((row) =>
-          dsl.fields.slice(0, 3).every((field) => {
+          dsl.fields.slice(0, 3).every((field: FieldSpec) => {
             const keyword = String(filters[field.name] ?? '').trim()
             if (!keyword) return true
             return String(row[field.name] ?? '').toLowerCase().includes(keyword.toLowerCase())
@@ -1161,13 +1293,13 @@ function GeneratedPageDetail({ pages, refreshPages }: SharedAppProps) {
                 <div className="preview-toolbar">
                   <Form className="search-form" form={searchForm} layout="vertical">
                     <div className="search-fields-grid">
-                      {dsl.fields.slice(0, 3).map((field) => (
+                      {dsl.fields.slice(0, 3).map((field: FieldSpec) => (
                         <Form.Item key={field.name} label={field.label} name={field.name}>
                           {field.type === 'enum' ? (
                             <Select
                               allowClear
                               placeholder={getFieldPlaceholder(field)}
-                              options={(field.options ?? []).map((value) => ({ value, label: value }))}
+                              options={(field.options ?? []).map((value: string) => ({ value, label: value }))}
                             />
                           ) : (
                             <Input placeholder={getFieldPlaceholder(field)} />
@@ -1208,7 +1340,7 @@ function GeneratedPageDetail({ pages, refreshPages }: SharedAppProps) {
                 <Divider />
                 <Card size="small" title="业务规则">
                   <Space wrap>
-                    {dsl.rules.map((rule) => (
+                    {dsl.rules.map((rule: string) => (
                       <Tag key={rule}>{rule}</Tag>
                     ))}
                   </Space>
@@ -1231,7 +1363,7 @@ function GeneratedPageDetail({ pages, refreshPages }: SharedAppProps) {
         onOk={() => void form.submit()}
       >
         <Form form={form} layout="vertical" onFinish={(values) => void handleSubmit(values)}>
-          {dsl?.fields.map((field) => (
+          {dsl?.fields.map((field: FieldSpec) => (
             <Form.Item
               key={field.name}
               label={field.label}
@@ -1242,7 +1374,7 @@ function GeneratedPageDetail({ pages, refreshPages }: SharedAppProps) {
               ]}
             >
               {field.type === 'enum' ? (
-                <Select options={(field.options ?? []).map((value) => ({ value, label: value }))} placeholder={getFieldPlaceholder(field)} />
+                <Select options={(field.options ?? []).map((value: string) => ({ value, label: value }))} placeholder={getFieldPlaceholder(field)} />
               ) : (
                 <Input placeholder={getFieldPlaceholder(field)} />
               )}

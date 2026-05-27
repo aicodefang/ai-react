@@ -66,7 +66,7 @@ async def list_customers(
         query_parts.append(f"status=eq.{quote(status)}")
     query = "&".join(query_parts)
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
         try:
             response = await client.get(
                 supabase_endpoint(settings, settings.supabase_customers_table, query),
@@ -87,7 +87,7 @@ async def create_customer(settings: Settings, payload: SaveCustomerRequest) -> C
     ensure_supabase_env(settings)
     customer = create_customer_payload(payload)
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
         try:
             response = await client.post(
                 supabase_endpoint(settings, settings.supabase_customers_table),
@@ -117,7 +117,7 @@ async def update_customer(settings: Settings, customer_id: str, payload: SaveCus
     if payload.createdAt:
         update_payload["created_at"] = payload.createdAt
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
         try:
             response = await client.patch(
                 supabase_endpoint(settings, settings.supabase_customers_table, f"id=eq.{quote(customer_id)}"),
@@ -139,7 +139,7 @@ async def update_customer(settings: Settings, customer_id: str, payload: SaveCus
 async def delete_customer(settings: Settings, customer_id: str) -> None:
     ensure_supabase_env(settings)
 
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=20, trust_env=False) as client:
         try:
             response = await client.delete(
                 supabase_endpoint(settings, settings.supabase_customers_table, f"id=eq.{quote(customer_id)}"),

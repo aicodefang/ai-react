@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import type { SharedAppProps } from '../types'
+import { generatedRuntimeRoutes } from '../generated/registry'
 
 type AppRoutesProps = SharedAppProps & {
   ApiManagementPage: React.ComponentType
@@ -36,6 +37,9 @@ export function AppRoutes({
       <Route element={<PageApiManagement {...sharedProps} />} path="/page-apis" />
       <Route element={<PageApiManagement {...sharedProps} />} path="/page-apis/:pageId" />
       <Route element={<GeneratedPageDetail {...sharedProps} />} path="/pages/:pageId" />
+      {generatedRuntimeRoutes.map((route) => (
+        <Route element={<route.component />} key={route.path} path={route.path} />
+      ))}
       <Route element={<Navigate replace to="/generator" />} path="*" />
     </Routes>
   )

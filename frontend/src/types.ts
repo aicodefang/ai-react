@@ -1,4 +1,4 @@
-import type { ApiAction, ApiMethod, GeneratedPage, PageDsl, PageListData } from './api'
+import type { ApiAction, ApiMethod, GeneratedPage, PageDsl, PageListData, WorkflowRun } from './api'
 
 export type NewPageRouteState = {
   dsl?: PageDsl
@@ -26,3 +26,5 @@ export type ApiFormValues = {
   responseSchemaText: string
   mockDataText: string
 }
+
+export type WorkflowRunView = WorkflowRun

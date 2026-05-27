@@ -125,6 +125,32 @@ class CustomerListData(BaseModel):
     total: int
 
 
+class SupplierRecord(BaseModel):
+    id: str
+    supplierName: str
+    supplierType: str
+    contactName: str
+    phone: str
+    city: str
+    cooperationStatus: str
+    createdAt: str
+
+
+class SaveSupplierRequest(BaseModel):
+    supplierName: str
+    supplierType: str
+    contactName: str
+    phone: str
+    city: str
+    cooperationStatus: str
+    createdAt: str | None = None
+
+
+class SupplierListData(BaseModel):
+    list: list[SupplierRecord]
+    total: int
+
+
 class ApiResponse(BaseModel, Generic[T]):
     code: int
     message: str
