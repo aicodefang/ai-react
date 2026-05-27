@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent
-CUSTOMERS_FILE = BASE_DIR / "customers.json"
 
 
 def load_env_file() -> None:
@@ -29,10 +28,10 @@ class Settings:
     supabase_pages_table: str
     supabase_apis_table: str
     supabase_bindings_table: str
+    supabase_customers_table: str
     xiaomi_api_base: str
     xiaomi_api_key: str
     xiaomi_model: str
-    customers_file: Path
 
 
 def get_settings() -> Settings:
@@ -43,8 +42,8 @@ def get_settings() -> Settings:
         supabase_pages_table=os.getenv("SUPABASE_PAGES_TABLE") or os.getenv("SUPABASE_TABLE", "pages"),
         supabase_apis_table=os.getenv("SUPABASE_APIS_TABLE", "api_definitions"),
         supabase_bindings_table=os.getenv("SUPABASE_BINDINGS_TABLE", "page_api_bindings"),
+        supabase_customers_table=os.getenv("SUPABASE_CUSTOMERS_TABLE", "customers"),
         xiaomi_api_base=os.getenv("XIAOMI_API_BASE", "https://token-plan-sgp.xiaomimimo.com/v1").rstrip("/"),
         xiaomi_api_key=os.getenv("XIAOMI_API_KEY", ""),
-        xiaomi_model=os.getenv("XIAOMI_MODEL", "mimo-v2.5-pro"),
-        customers_file=CUSTOMERS_FILE,
+        xiaomi_model=os.getenv("XIAOMI_MODEL", "mimo-v2-flash"),
     )

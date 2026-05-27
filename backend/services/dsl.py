@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import HTTPException
@@ -12,7 +13,18 @@ from ..models import PageDsl
 
 def ensure_xiaomi_env(settings: Settings) -> None:
     if not settings.xiaomi_api_base or not settings.xiaomi_api_key or not settings.xiaomi_model:
-        raise HTTPException(status_code=500, detail="小米模型环境变量未配置")
+        raise HTTPException(status_code=500, detail="模型环境变量未配置")
+
+
+def build_model_headers(settings: Settings) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    host = urlparse(settings.xiaomi_api_base).netloc.lower()
+    if "deepseek.com" in host:
+        headers["Authorization"] = f"Bearer {settings.xiaomi_api_key}"
+        return headers
+
+    headers["api-key"] = settings.xiaomi_api_key
+    return headers
 
 
 def extract_json_object(text: str) -> dict:
@@ -112,7 +124,7 @@ async def generate_dsl_with_xiaomi(prompt: str, settings: Settings) -> PageDsl:
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(
             f"{settings.xiaomi_api_base}/chat/completions",
-            headers={"Content-Type": "application/json", "api-key": settings.xiaomi_api_key},
+            headers=build_model_headers(settings),
             json=request_payload,
         )
         response.raise_for_status()
