@@ -29,11 +29,15 @@ def is_supabase_table_missing(error: httpx.HTTPStatusError) -> bool:
 
 
 def supabase_headers(settings: Settings) -> dict[str, str]:
-    return {
+    headers = {
         "apikey": settings.supabase_key,
-        "Authorization": f"Bearer {settings.supabase_key}",
         "Content-Type": "application/json",
     }
+    # New Supabase secret/publishable keys are opaque strings, not JWTs.
+    # Only legacy anon/service_role keys should be sent as Bearer tokens.
+    if not settings.supabase_key.startswith(("sb_secret_", "sb_publishable_")):
+        headers["Authorization"] = f"Bearer {settings.supabase_key}"
+    return headers
 
 
 def supabase_endpoint(settings: Settings, table: str, query: str = "") -> str:

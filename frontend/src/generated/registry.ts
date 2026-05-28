@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 
 import { CustomerGeneratedPage, generatedCustomerGeneratedPageRoute } from './customer'
 import { SupplierGeneratedPage, generatedSupplierGeneratedPageRoute } from './supplier'
+import { WarehouseGeneratedPage, generatedWarehouseGeneratedPageRoute } from './warehouse'
 
 export type GeneratedRuntimeRoute = {
   path: string
@@ -22,5 +23,11 @@ export const generatedRuntimeRoutes: GeneratedRuntimeRoute[] = [
     title: generatedSupplierGeneratedPageRoute.title,
     entity: 'supplier',
     component: SupplierGeneratedPage,
+  },
+  {
+    path: `/generated${generatedWarehouseGeneratedPageRoute.path}`,
+    title: generatedWarehouseGeneratedPageRoute.title,
+    entity: 'warehouse',
+    component: WarehouseGeneratedPage,
   },
 ]

@@ -10,6 +10,7 @@ import {
   EyeOutlined,
   FileTextOutlined,
   PlusOutlined,
+  ReloadOutlined,
   TableOutlined,
 } from '@ant-design/icons'
 import {
@@ -38,9 +39,9 @@ import {
   theme,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BrowserRouter, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { buildRuntimePath, createApi, createPage, createWorkflowRun, deletePage, getPage, getPageBindings, getWorkflowRun, invokeRuntimeApi, listApis, listWorkflowRuns, removeApi, savePageBindings, updateApi } from './api'
+import { buildRuntimePath, continueWorkflowRun, createApi, createPage, createWorkflowRun, deletePage, getPage, getPageBindings, getWorkflowRun, invokeRuntimeApi, listApis, listWorkflowRuns, removeApi, savePageBindings, updateApi } from './api'
 import { AppFrame } from './components/AppFrame'
 import { apiActionOptions, apiMethodOptions, apiStatusOptions, businessSpec, initialPrompt } from './constants'
 import { usePagesStore } from './hooks/usePagesStore'
@@ -58,8 +59,10 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
   const [currentRun, setCurrentRun] = useState<WorkflowRun | null>(null)
   const [recentRuns, setRecentRuns] = useState<Record<string, unknown>[]>([])
   const [isGeneratingWorkflow, setIsGeneratingWorkflow] = useState(false)
+  const [isContinuingWorkflow, setIsContinuingWorkflow] = useState(false)
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
   const [messageApi, contextHolder] = message.useMessage()
+  const pollingTimerRef = useRef<number | null>(null)
 
   const refreshRuns = async () => {
     setIsLoadingRuns(true)
@@ -77,6 +80,65 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
     void refreshRuns()
   }, [])
 
+  useEffect(() => {
+    if (pollingTimerRef.current) {
+      window.clearTimeout(pollingTimerRef.current)
+      pollingTimerRef.current = null
+    }
+
+    if (!currentRun || !['pending', 'running'].includes(currentRun.status)) {
+      return
+    }
+
+    pollingTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const detail = await getWorkflowRun(currentRun.id)
+          setCurrentRun(detail)
+          if (detail.status !== currentRun.status) {
+            void refreshRuns()
+          }
+        } catch {
+          // ignore polling errors and retry on next cycle
+        }
+      })()
+    }, 1500)
+
+    return () => {
+      if (pollingTimerRef.current) {
+        window.clearTimeout(pollingTimerRef.current)
+        pollingTimerRef.current = null
+      }
+    }
+  }, [currentRun, currentRun?.id, currentRun?.status])
+
+  const getRunTagColor = (status?: WorkflowRun['status']) => {
+    if (status === 'succeeded') return 'green'
+    if (status === 'failed') return 'red'
+    if (status === 'waiting_for_sql') return 'gold'
+    if (status === 'running') return 'blue'
+    return 'default'
+  }
+
+  const getStepTagColor = (status: WorkflowStep['status']) => {
+    if (status === 'succeeded') return 'green'
+    if (status === 'failed') return 'red'
+    if (status === 'waiting_for_sql') return 'gold'
+    if (status === 'running') return 'blue'
+    return 'default'
+  }
+
+  const getStepsCurrent = () => {
+    if (!currentRun) return 0
+    if (currentRun.status === 'pending') return 0
+    if (currentRun.status === 'running') {
+      const runningIndex = currentRun.steps.findIndex((step) => step.status === 'running')
+      return runningIndex >= 0 ? runningIndex : Math.max(currentRun.steps.length - 1, 0)
+    }
+    if (currentRun.status === 'waiting_for_sql') return 2
+    return 3
+  }
+
   const handleGenerateWorkflow = async () => {
     if (!prompt.trim()) {
       messageApi.warning('请先输入页面需求')
@@ -88,7 +150,7 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
       const result = await createWorkflowRun(prompt)
       setCurrentRun(result)
       await refreshRuns()
-      messageApi.success('多 Agent 工作流执行完成')
+      messageApi.success('多 Agent 工作流已启动')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '工作流执行失败，请稍后重试'
       messageApi.error(errorMessage)
@@ -99,10 +161,25 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
 
   const handleOpenRun = async (runId: string) => {
     try {
-      const detail = (await getWorkflowRun(runId)) as unknown as WorkflowRun
+      const detail = await getWorkflowRun(runId)
       setCurrentRun(detail)
     } catch (error) {
       messageApi.error(error instanceof Error ? error.message : '加载工作流详情失败')
+    }
+  }
+
+  const handleContinueWorkflow = async () => {
+    if (!currentRun) return
+    setIsContinuingWorkflow(true)
+    try {
+      const run = await continueWorkflowRun(currentRun.id)
+      setCurrentRun(run)
+      await refreshRuns()
+      messageApi.success('工作流已继续执行，正在进入 QA 校验阶段')
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : '继续执行失败')
+    } finally {
+      setIsContinuingWorkflow(false)
     }
   }
 
@@ -110,6 +187,8 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
   const runtimeEntity = currentRun?.sharedContract?.entity
   const runtimePageUrl = runtimeEntity ? `/generated/${runtimeEntity}` : ''
   const runtimeApiPath = runtimeEntity ? `/api/generated/${runtimeEntity}s` : ''
+  const hasQaStep = currentRun?.steps.some((step) => step.agentName === 'qa') ?? false
+  const canContinueAfterSql = Boolean(currentRun && sqlArtifacts.length > 0 && !hasQaStep && (currentRun.status === 'waiting_for_sql' || currentRun.status === 'running'))
 
   return (
     <AppFrame>
@@ -125,11 +204,11 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
 
         <Card className="flow-card">
           <Steps
-            current={currentRun ? 3 : 0}
+            current={getStepsCurrent()}
             items={[
               { title: 'Planner', description: '自然语言转共享协议' },
               { title: 'Frontend', description: '生成页面与路由草稿' },
-              { title: 'Service', description: '生成接口与 SQL 草稿' },
+              { title: 'Service', description: '生成接口与 SQL 草稿，等待建表' },
               { title: 'QA', description: '校验字段与契约一致性' },
             ]}
           />
@@ -144,7 +223,7 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
                 <span>工作流需求</span>
               </Space>
             }
-            extra={<Tag color={currentRun ? (currentRun.status === 'succeeded' ? 'green' : 'orange') : 'blue'}>{currentRun ? currentRun.status : '待执行'}</Tag>}
+            extra={<Tag color={currentRun ? getRunTagColor(currentRun.status) : 'blue'}>{currentRun ? currentRun.status : '待执行'}</Tag>}
           >
             <Input.TextArea value={prompt} onChange={(event) => setPrompt(event.target.value)} rows={10} />
             <Button block icon={<ExperimentOutlined />} loading={isGeneratingWorkflow} type="primary" onClick={handleGenerateWorkflow}>
@@ -201,7 +280,7 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
                     ]}
                   >
                     <List.Item.Meta description={run.created_at} title={run.prompt.slice(0, 28)} />
-                    <Tag color={run.status === 'succeeded' ? 'green' : run.status === 'failed' ? 'red' : 'blue'}>{run.status}</Tag>
+                    <Tag color={getRunTagColor(run.status as WorkflowRun['status'])}>{run.status}</Tag>
                   </List.Item>
                 )
               }}
@@ -213,7 +292,7 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
               <div className="workflow-detail">
                 <Space direction="vertical" size={12} style={{ width: '100%' }}>
                   <div className="workflow-meta-row">
-                    <Tag color={currentRun.status === 'succeeded' ? 'green' : 'red'}>{currentRun.status}</Tag>
+                    <Tag color={getRunTagColor(currentRun.status)}>{currentRun.status}</Tag>
                     <Typography.Text type="secondary">{currentRun.id}</Typography.Text>
                   </div>
 
@@ -230,7 +309,7 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
                           <Flex justify="space-between">
                             <Space>
                               <Typography.Text strong>{step.agentName}</Typography.Text>
-                              <Tag color={step.status === 'succeeded' ? 'green' : step.status === 'failed' ? 'red' : 'blue'}>{step.status}</Tag>
+                              <Tag color={getStepTagColor(step.status)}>{step.status}</Tag>
                             </Space>
                             <Typography.Text type="secondary">{step.finishedAt ?? step.startedAt}</Typography.Text>
                           </Flex>
@@ -266,14 +345,19 @@ function GeneratorPage({ isPageListLoading, pages }: SharedAppProps) {
                               <Typography.Text strong>1. 在 Supabase SQL Editor 执行下面的建表 SQL</Typography.Text>
                             </div>
                             <div className="workflow-next-step">
-                              <Typography.Text strong>2. 执行完成后刷新当前生成页</Typography.Text>
+                              <Typography.Text strong>2. 建表成功后，点击“我已建表，继续执行”</Typography.Text>
                             </div>
                             <div className="workflow-next-step">
-                              <Typography.Text strong>3. 打开生成运行页验证 CRUD 链路</Typography.Text>
+                              <Typography.Text strong>3. QA 完成后，再打开生成运行页验证 CRUD 链路</Typography.Text>
                               {runtimePageUrl && <Typography.Text code>{runtimePageUrl}</Typography.Text>}
                               {runtimeApiPath && <Typography.Text code>{runtimeApiPath}</Typography.Text>}
                             </div>
                           </div>
+                          {canContinueAfterSql && (
+                            <Button icon={<ReloadOutlined />} loading={isContinuingWorkflow} type="primary" onClick={handleContinueWorkflow}>
+                              我已建表，继续执行
+                            </Button>
+                          )}
                           {sqlArtifacts.map((artifact: WorkflowArtifact) => (
                             <Card key={`${artifact.id}-sql`} size="small">
                               <Space direction="vertical" size={6} style={{ width: '100%' }}>

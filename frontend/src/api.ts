@@ -129,11 +129,14 @@ export type SharedContract = {
   rules: string[]
 }
 
+export type WorkflowStepStatus = 'pending' | 'running' | 'waiting_for_sql' | 'succeeded' | 'failed'
+export type WorkflowRunStatus = 'pending' | 'running' | 'waiting_for_sql' | 'succeeded' | 'failed'
+
 export type WorkflowStep = {
   id: string
   runId: string
   agentName: string
-  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  status: WorkflowStepStatus
   summary: string
   output?: Record<string, unknown>
   warnings: string[]
@@ -155,7 +158,7 @@ export type WorkflowArtifact = {
 export type WorkflowRun = {
   id: string
   prompt: string
-  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  status: WorkflowRunStatus
   sharedContract?: SharedContract
   steps: WorkflowStep[]
   artifacts: WorkflowArtifact[]
@@ -231,7 +234,13 @@ export function listWorkflowRuns() {
 }
 
 export function getWorkflowRun(runId: string) {
-  return request<Record<string, unknown>>(`/api/workflows/${runId}`)
+  return request<WorkflowRun>(`/api/workflows/${runId}`)
+}
+
+export function continueWorkflowRun(runId: string) {
+  return request<WorkflowRun>(`/api/workflows/${runId}/continue`, {
+    method: 'POST',
+  })
 }
 
 export function listApis(pageNo = 1, pageSize = 10) {

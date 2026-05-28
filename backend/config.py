@@ -30,6 +30,7 @@ class Settings:
     supabase_bindings_table: str
     supabase_customers_table: str
     supabase_suppliers_table: str
+    supabase_warehouses_table: str
     supabase_workflow_runs_table: str
     supabase_workflow_steps_table: str
     supabase_workflow_artifacts_table: str
@@ -49,6 +50,7 @@ def get_settings() -> Settings:
         supabase_bindings_table=os.getenv("SUPABASE_BINDINGS_TABLE", "page_api_bindings"),
         supabase_customers_table=os.getenv("SUPABASE_CUSTOMERS_TABLE", "customers"),
         supabase_suppliers_table=os.getenv("SUPABASE_SUPPLIERS_TABLE", "suppliers"),
+        supabase_warehouses_table=os.getenv("SUPABASE_WAREHOUSES_TABLE", "warehouses"),
         supabase_workflow_runs_table=os.getenv("SUPABASE_WORKFLOW_RUNS_TABLE", "workflow_runs"),
         supabase_workflow_steps_table=os.getenv("SUPABASE_WORKFLOW_STEPS_TABLE", "workflow_steps"),
         supabase_workflow_artifacts_table=os.getenv("SUPABASE_WORKFLOW_ARTIFACTS_TABLE", "workflow_artifacts"),

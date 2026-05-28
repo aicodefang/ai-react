@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from .shared_contract import SharedContract
 
 
-WorkflowStatus = Literal["pending", "running", "succeeded", "failed"]
+WorkflowStatus = Literal["pending", "running", "waiting_for_sql", "succeeded", "failed"]
 
 
 class WorkflowGenerateRequest(BaseModel):
